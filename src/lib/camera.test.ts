@@ -49,3 +49,10 @@ test('Heading interpolation takes the short path across north', () => {
 test('Heading interpolation limits rotation speed', () => {
   assert.ok(Math.abs(angle(0, advanceHeading(0, 170, .016))) <= 180 * .016 + .001);
 });
+test('Looking around moves a fixed road point across the image instead of moving its world position', () => {
+  const world = shiftPoint(origin, 0, 35);
+  const forward = groundProjection(world, { position: origin, heading: 0, pitch: -2, zoom: 1 }, 1000, 600)!;
+  const lookingRight = groundProjection(world, { position: origin, heading: 35, pitch: -2, zoom: 1 }, 1000, 600)!;
+  assert.ok(Math.abs(forward[0] - 500) < .1); assert.ok(lookingRight[0] < 200);
+  assert.equal(groundProjection(world, { position: origin, heading: 180, pitch: -2, zoom: 1 }, 1000, 600), null);
+});

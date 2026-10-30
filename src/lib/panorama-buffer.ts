@@ -5,6 +5,7 @@ export interface PanoramaSlot {
   prepare(frame: PanoramaFrame, heading: number): Promise<void>;
   present(active: boolean): void;
   camera(): Camera | null;
+  point(heading: number): void;
   dispose(): void;
 }
 export class BufferedPanoramas {
@@ -31,15 +32,16 @@ export class BufferedPanoramas {
     this.pending = { index, id: frame.id, promise };
     return promise;
   }
-  async show(frame: PanoramaFrame, heading: number) {
+  async show(frame: PanoramaFrame, heading: number | (() => number)) {
     if (this.disposed) return false;
     const request = ++this.displayVersion;
     if (this.activeFrame?.id === frame.id) { this.required = null; return true; }
     this.required = request;
     const index = this.active < 0 ? 0 : 1 - this.active;
+    const facing = () => typeof heading === 'function' ? heading() : heading;
     try {
-      if (!await this.load(frame, heading) || this.disposed || request !== this.displayVersion) return false;
-      this.slots[index].present(true);
+      if (!await this.load(frame, facing()) || this.disposed || request !== this.displayVersion) return false;
+      this.slots[index].point(facing()); this.slots[index].present(true);
       if (this.active >= 0 && this.active !== index) this.slots[this.active].present(false);
       this.active = index;
       return true;

@@ -5,6 +5,7 @@ import { advanceHeading, cameraAnchor, routeFollowHeading, shiftPoint, type Came
 import { BufferedPanoramas, type PanoramaFrame } from '../lib/panorama-buffer';
 import { GooglePanoramaSlot } from '../lib/google-panorama-slot';
 import RouteRibbon from './RouteRibbon';
+import { LocateFixed } from 'lucide-react';
 type Coverage = 'loading' | 'ready' | 'missing';
 function deadline<T>(request: Promise<T>, milliseconds: number) {
   return new Promise<T>((resolve, reject) => { const timer = setTimeout(() => reject(new Error('Street View lookup timed out')), milliseconds); request.then(value => { clearTimeout(timer); resolve(value); }, error => { clearTimeout(timer); reject(error); }); });
@@ -14,11 +15,17 @@ export default function StreetScene({ route, distance, googleReady, following, o
   const currentDistance = useRef(distance); currentDistance.current = distance;
   const moving = useRef(following); moving.current = following;
   const [camera, setCamera] = useState<Camera | null>(null), [imageDate, setImageDate] = useState(''), [buffering, setBuffering] = useState(false);
+  const [lookingAround, setLookingAround] = useState(false);
+  const resume = useRef<() => void>(() => {});
   useEffect(() => {
     if (!googleReady || !container.current) { onAvailability('missing'); onPreparation(null); onBuffering(false); return; }
     let disposed = false, processing = true, waiting = false, lastQuery = -Infinity, retry = false, retryAt = 0, prefetchedId = '', prefetchedAt = -Infinity;
     let orientationFrame = 0, cameraFrame = 0, resizeFrame = 0, followUntil = 0, previousDistance = currentDistance.current, previousTime = performance.now();
     let buffer: BufferedPanoramas | null = null;
+    let manualLookUntil = 0, manualLookActive = false;
+    const isManual = () => manualLookActive && (!moving.current || performance.now() < manualLookUntil);
+    const looking = (slot: GooglePanoramaSlot) => { if (disposed || buffer?.activeSlot !== slot) return; manualLookUntil = performance.now() + 8000; manualLookActive = true; setLookingAround(true); };
+    resume.current = () => { manualLookUntil = 0; manualLookActive = false; followUntil = performance.now() + 1200; setLookingAround(false); };
     const publishCamera = () => {
       if (disposed) return;
       const value = buffer?.activeSlot?.camera(); if (!value) return;
@@ -26,7 +33,7 @@ export default function StreetScene({ route, distance, googleReady, following, o
     };
     const changed = () => { cancelAnimationFrame(cameraFrame); cameraFrame = requestAnimationFrame(publishCamera); };
     let slots: [GooglePanoramaSlot, GooglePanoramaSlot]; const created: GooglePanoramaSlot[] = [];
-    try { container.current.replaceChildren(); created.push(new GooglePanoramaSlot(container.current, changed)); created.push(new GooglePanoramaSlot(container.current, changed)); slots = [created[0], created[1]]; buffer = new BufferedPanoramas(slots); }
+    try { container.current.replaceChildren(); created.push(new GooglePanoramaSlot(container.current, changed, looking)); created.push(new GooglePanoramaSlot(container.current, changed, looking)); slots = [created[0], created[1]]; buffer = new BufferedPanoramas(slots); }
     catch { created.forEach(slot => slot.dispose()); container.current?.replaceChildren(); onAvailability('missing'); onPreparation(null); onBuffering(false); return; }
     const service = new google.maps.StreetViewService();
     const cache = new Map<number, Promise<PanoramaFrame | null>>();
@@ -53,7 +60,7 @@ export default function StreetScene({ route, distance, googleReady, following, o
       return null;
     };
     const show = async (frame: PanoramaFrame) => {
-      const shown = await buffer!.show(frame, routeFollowHeading(route, currentDistance.current, frame.distance));
+      const shown = await buffer!.show(frame, () => (isManual() ? buffer!.activeSlot?.camera()?.heading : null) ?? routeFollowHeading(route, currentDistance.current, frame.distance));
       if (!shown || disposed) return false;
       followUntil = performance.now() + 1200; setImageDate(buffer!.activeFrame?.imageDate || ''); publishCamera(); onAvailability('ready'); return true;
     };
@@ -102,8 +109,11 @@ export default function StreetScene({ route, distance, googleReady, following, o
       const d = currentDistance.current;
       if (Math.abs(d - previousDistance) > .15) { if (Math.abs(d - previousDistance) > 45) setWaiting(true); previousDistance = d; followUntil = now + 900; }
       const active = buffer!.activeSlot;
+      const manual = isManual(), manualCamera = manual ? active?.camera() : null;
+      if (!manual && manualLookActive) { manualLookActive = false; setLookingAround(false); }
       for (const slot of slots) {
-        if (!slot.frame || (slot === active && !moving.current && now > followUntil)) continue;
+        if (!slot.frame || (slot === active && (manual || (!moving.current && now > followUntil)))) continue;
+        if (manualCamera && slot !== active) { slot.copyLook(manualCamera); continue; }
         const target = routeFollowHeading(route, d, slot.frame.distance), pov = slot.view.getPov();
         slot.point(advanceHeading(Number.isFinite(pov?.heading) ? pov.heading : target, target, elapsed));
       }
@@ -118,6 +128,7 @@ export default function StreetScene({ route, distance, googleReady, following, o
   return <div className="street-scene">
     <div ref={container} className="google-panorama ready"/>
     {camera && <RouteRibbon route={route} distance={distance} camera={camera}/>}
+    {lookingAround && <button className="face-route" onClick={() => resume.current()}><LocateFixed size={15}/> Face route</button>}
     {buffering && camera && <div className="street-buffering">Preparing next view…</div>}
     {googleReady && dateLabel && <div className="photo-date">Photo: {dateLabel}</div>}
   </div>;

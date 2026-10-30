@@ -34,5 +34,5 @@ export default function RouteRibbon({ route, distance, camera }: { route: Prepar
     const nose = screen(ahead, 0, ah), l = screen(p, .57, hd), mid = screen(pointAt(route.path, route.cumulative, d + 1), 0, hd), r = screen(p, -.57, hd);
     if (nose && l && mid && r && !crossedQuad([nose, l, mid, r]) && quadArea([nose, l, mid, r]) > 9 && (!lastCentre || Math.hypot(mid[0] - lastCentre[0], mid[1] - lastCentre[1]) > 15)) { arrows.push([nose, l, mid, r].map(p => p.join(',')).join(' ')); lastCentre = mid; }
   }
-  return <svg ref={ref} className="route-ribbon" aria-label="Approximate blue route arrows on the road ahead"><g opacity=".68" fill="#2678fa">{mesh.map((p, i) => <polygon key={i} points={p}/>)}</g>{arrows.map((p, i) => <polygon key={i} points={p} fill="#f5faff" fillOpacity=".95"/>)}</svg>;
+  return <svg ref={ref} className="route-ribbon" data-camera-heading={frame.heading.toFixed(2)} data-route-heading={anchor.direction.toFixed(2)} data-route-anchor={start.toFixed(2)} data-lane-offset={anchor.lateral.toFixed(2)} aria-label="Approximate blue route arrows on the road ahead"><g opacity=".68" fill="#2678fa">{mesh.map((p, i) => <polygon key={i} points={p}/>)}</g>{arrows.map((p, i) => <polygon key={i} points={p} fill="#f5faff" fillOpacity=".95"/>)}</svg>;
 }

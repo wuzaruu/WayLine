@@ -9,16 +9,20 @@ export default function RouteMap({ route, position, heading, googleReady, follow
   const layers = useRef<L.LayerGroup | null>(null); const leafBus = useRef<L.Marker | null>(null);
   const googleLayers = useRef<(google.maps.Polyline | google.maps.Marker)[]>([]); const gBus = useRef<google.maps.Marker | null>(null);
   const currentRoute = useRef(route), following = useRef(follow);
+  const wasFollowing = useRef(false);
   currentRoute.current = route; following.current = follow;
   useEffect(() => {
     if (!container.current) return;
+    wasFollowing.current = false;
     if (googleReady) {
       gmap.current = new google.maps.Map(container.current, { center: { lat: 53.5461, lng: -113.4938 }, zoom: 12, mapTypeId: 'hybrid', disableDefaultUI: true, zoomControl: true, streetViewControl: false, clickableIcons: false, styles: [{ elementType: 'geometry', stylers: [{ color: '#18212c' }] }, { elementType: 'labels.text.stroke', stylers: [{ color: '#18212c' }] }, { elementType: 'labels.text.fill', stylers: [{ color: '#7f90a7' }] }, { featureType: 'poi', stylers: [{ visibility: 'off' }] }, { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#283747' }] }, { featureType: 'road.highway', elementType: 'geometry', stylers: [{ color: '#34516f' }] }, { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#102f4c' }] }, { featureType: 'landscape.natural', elementType: 'geometry', stylers: [{ color: '#1b2a2c' }] }] });
+      const map = gmap.current; map.addListener('zoom_changed', () => { if (container.current) container.current.dataset.mapZoom = String(map.getZoom()); });
     } else {
       const map = L.map(container.current, { zoomControl: false, attributionControl: true }).setView([53.5461, -113.4938], 12);
       L.tileLayer('https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19, attribution: 'Imagery &copy; Esri, Maxar, Earthstar Geographics' }).addTo(map);
       L.control.zoom({ position: 'bottomright' }).addTo(map);
       leaf.current = map; layers.current = L.layerGroup().addTo(map);
+      map.on('zoomend', () => { if (container.current) container.current.dataset.mapZoom = String(map.getZoom()); });
     }
     let resizeFrame = 0;
     const resize = new ResizeObserver(() => { cancelAnimationFrame(resizeFrame); resizeFrame = requestAnimationFrame(() => {
@@ -64,7 +68,11 @@ export default function RouteMap({ route, position, heading, googleReady, follow
     leafBus.current?.setLatLng(position);
     gBus.current?.setPosition({ lat: position[0], lng: position[1] });
     if (gBus.current) gBus.current.setIcon({ path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW, fillColor: '#2563eb', fillOpacity: 1, strokeColor: '#fff', strokeWeight: 3, scale: 6, rotation: heading });
-    if (follow) { leaf.current?.setView(position, 17, { animate: false }); gmap.current?.setCenter({ lat: position[0], lng: position[1] }); gmap.current?.setZoom(18); }
-  }, [position, heading, follow]);
+    if (follow) {
+      if (leaf.current) leaf.current.setView(position, wasFollowing.current ? leaf.current.getZoom() : 17, { animate: false });
+      if (gmap.current) { gmap.current.setCenter({ lat: position[0], lng: position[1] }); if (!wasFollowing.current) gmap.current.setZoom(18); }
+    }
+    wasFollowing.current = follow;
+  }, [position, heading, follow, googleReady]);
   return <div className="route-map" ref={container} aria-label="Edmonton bus route map" />;
 }

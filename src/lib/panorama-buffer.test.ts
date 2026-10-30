@@ -5,6 +5,7 @@ class Slot implements PanoramaSlot {
   loads: string[] = [];
   visible = false;
   activations = 0;
+  heading = 0;
   pending: { resolve: () => void; reject: (error: Error) => void } | null = null;
   prepare(frame: PanoramaFrame) {
     this.pending?.reject(new Error('Superseded'));
@@ -13,6 +14,7 @@ class Slot implements PanoramaSlot {
   }
   present(active: boolean) { this.visible = active; if (active) this.activations++; }
   camera() { return null; }
+  point(heading: number) { this.heading = heading; }
   dispose() { this.pending?.reject(new Error('Disposed')); }
 }
 const frame = (id: string): PanoramaFrame => ({ id, position: [53.55, -113.5], distance: 0, sampleDistance: 0, imageDate: '' });
@@ -53,4 +55,9 @@ test('Leaving the route prevents a pending picture from being activated', async 
   const slots: [Slot, Slot] = [new Slot(), new Slot()], buffer = new BufferedPanoramas(slots);
   const pending = buffer.show(frame('A'), 0); buffer.dispose();
   assert.equal(await pending, false); assert.equal(slots[0].activations, 0); assert.equal(buffer.activeFrame, null);
+});
+test('A prepared photo uses the latest look direction at the moment it becomes visible', async () => {
+  const { slots, buffer } = await setup(); let heading = 15;
+  const next = buffer.show(frame('B'), () => heading); heading = 125;
+  slots[1].pending!.resolve(); assert.equal(await next, true); assert.equal(slots[1].heading, 125);
 });
