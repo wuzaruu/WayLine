@@ -1,6 +1,6 @@
 import { angle, metres } from './geometry';
 import type { Camera } from './camera';
-import type { PanoramaFrame, PanoramaSlot } from './panorama-buffer';
+import type { PanoramaFrame, PanoramaLook, PanoramaSlot } from './panorama-buffer';
 export class GooglePanoramaSlot implements PanoramaSlot {
   readonly host: HTMLDivElement;
   readonly view: google.maps.StreetViewPanorama;
@@ -57,7 +57,7 @@ export class GooglePanoramaSlot implements PanoramaSlot {
     this.view.setPov({ heading, pitch: Number.isFinite(pov?.pitch) ? pov.pitch : -2 });
   }
   present(active: boolean) { this.host.style.zIndex = active ? '2' : '1'; this.host.style.pointerEvents = active ? 'auto' : 'none'; }
-  copyLook(camera: Camera) { this.point(camera.heading); const pov = this.view.getPov(); if (Math.abs(pov.pitch - camera.pitch) > .05) this.view.setPov({ heading: camera.heading, pitch: camera.pitch }); if (Math.abs(this.view.getZoom() - camera.zoom) > .02) this.view.setZoom(camera.zoom); }
+  setLook(camera: PanoramaLook) { this.point(camera.heading); const pov = this.view.getPov(); if (Math.abs(pov.pitch - camera.pitch) > .05) this.view.setPov({ heading: camera.heading, pitch: camera.pitch }); if (Math.abs(this.view.getZoom() - camera.zoom) > .02) this.view.setZoom(camera.zoom); }
   camera(): Camera | null {
     const frame = this.prepared, p = this.view.getPosition(), pov = this.view.getPov();
     if (!frame || !p || this.view.getPano() !== frame.id || this.view.getStatus() !== google.maps.StreetViewStatus.OK || metres([p.lat(), p.lng()], frame.position) > 2) return null;

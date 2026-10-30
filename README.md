@@ -24,9 +24,11 @@ Optional Google road instructions use a separate `MAPS_SERVER_API_KEY`, with Rou
 
 - Route-number search, direction/pattern selection, stops and representative scheduled journey times.
 - 182 ETS bus routes and 390 representative route patterns.
-- First-person Google Street View with an always-on, camera-anchored blue route ribbon.
-- Continuous camera-heading updates through turns, independent of panorama lookups.
-- Free-look keeps the road overlay in world coordinates; Face route restores camera following.
+- First-person Google Street View with an always-on blue ribbon fixed to the route coordinates.
+- Camera steering follows the road at the displayed panorama, with smooth heading changes and no backward photo jumps during forward travel.
+- Free-look preserves heading, pitch and zoom across photos until Face route is pressed.
+- The approximate right-side route offset is independent of the capture camera's lane; reviewed lane paths use their saved coordinates directly.
+- Panorama searches use official Google outdoor collections, with satellite fallback when suitable imagery is unavailable.
 - Following mode preserves the map zoom selected with the plus/minus controls.
 - Startup preparation progress and two reusable Google viewers, keeping the current picture in place while the next viewpoint prepares.
 - Satellite follow camera, automatically used during missing Street View coverage.

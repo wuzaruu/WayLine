@@ -2,17 +2,22 @@ import { angle, heading, pointAt, project } from './geometry';
 import type { Point, PreparedRoute } from '../types';
 export type Camera = { position: Point; heading: number; pitch: number; zoom: number };
 export function routeFollowHeading(route: PreparedRoute, distance: number, panoramaDistance = distance) {
-  const d = Math.max(0, Math.min(route.total, Math.max(distance, Math.min(panoramaDistance, distance + 45))));
+  const d = Math.max(0, Math.min(route.total, panoramaDistance));
   return heading(pointAt(route.path, route.cumulative, Math.max(0, d - 3)), pointAt(route.path, route.cumulative, Math.min(route.total, d + 7)));
 }
 export function advanceHeading(current: number, target: number, seconds: number) {
-  const delta = angle(current, target), limit = Math.max(0, Math.min(seconds, .1)) * 180;
-  const step = Math.max(-limit, Math.min(limit, delta * (1 - Math.exp(-10 * Math.max(0, seconds)))));
+  const delta = angle(current, target), limit = Math.max(0, Math.min(seconds, .1)) * 90;
+  const step = Math.max(-limit, Math.min(limit, delta * (1 - Math.exp(-6 * Math.max(0, seconds)))));
   return (current + step + 360) % 360;
 }
 export function shiftPoint(point: Point, bearing: number, metres: number): Point {
   const r = bearing * Math.PI / 180;
   return [point[0] + Math.cos(r) * metres / 111320, point[1] + Math.sin(r) * metres / (111320 * Math.cos(point[0] * Math.PI / 180))];
+}
+export function guidancePoint(route: PreparedRoute, distance: number, lateral = 0): Point {
+  const p = pointAt(route.path, route.cumulative, distance);
+  const direction = heading(pointAt(route.path, route.cumulative, distance - 2), pointAt(route.path, route.cumulative, distance + 2));
+  return shiftPoint(p, direction + 90, (route.fixedGuidance ? 0 : 2.2) + lateral);
 }
 export function cameraAnchor(route: PreparedRoute, position: Point, distance: number) {
   const match = project(position, route.path, route.cumulative, Math.max(0, distance - 65), Math.min(route.total, distance + 85));

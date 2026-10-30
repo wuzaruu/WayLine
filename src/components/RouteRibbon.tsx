@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { heading, pointAt } from '../lib/geometry';
-import { cameraAnchor, groundProjection, shiftPoint, type Camera } from '../lib/camera';
+import { pointAt } from '../lib/geometry';
+import { cameraAnchor, groundProjection, guidancePoint, type Camera } from '../lib/camera';
 import { crossedQuad, quadArea } from '../lib/ribbon';
 import type { Point, PreparedRoute } from '../types';
 export default function RouteRibbon({ route, distance, camera }: { route: PreparedRoute; distance: number; camera: Camera | null }) {
@@ -11,13 +11,12 @@ export default function RouteRibbon({ route, distance, camera }: { route: Prepar
   const anchor = cameraAnchor(route, pos, distance);
   const frame: Camera = camera || { position: pos, heading: anchor.direction, pitch: -2, zoom: 1 };
   const start = anchor.distance;
-  function screen(p: Point, lateral: number, direction: number): [number, number] | null {
-    return groundProjection(shiftPoint(p, direction + 90, (route.fixedGuidance ? 0 : anchor.lateral) + lateral), frame, w, h);
+  function screen(d: number, lateral: number): [number, number] | null {
+    return groundProjection(guidancePoint(route, d, lateral), frame, w, h);
   }
   const sections: { left: [number, number]; right: [number, number] }[] = [];
   for (let d = start + 5; anchor.reliable && d < Math.min(route.total, start + 95); d += 1.5) {
-    const p = pointAt(route.path, route.cumulative, d), hd = heading(pointAt(route.path, route.cumulative, d - 2), pointAt(route.path, route.cumulative, d + 2));
-    const left = screen(p, -.72, hd), right = screen(p, .72, hd);
+    const left = screen(d, -.72), right = screen(d, .72);
     if (left && right) sections.push({ left, right }); else if (sections.length) break;
   }
   const mesh: string[] = [];
@@ -28,10 +27,8 @@ export default function RouteRibbon({ route, distance, camera }: { route: Prepar
   const arrows = [];
   let lastCentre: Point | null = null;
   for (let d = start + 12; anchor.reliable && d < Math.min(route.total, start + 90); d += 15) {
-    const p = pointAt(route.path, route.cumulative, d), hd = heading(pointAt(route.path, route.cumulative, d - 2), pointAt(route.path, route.cumulative, d + 2));
-    const ahead = pointAt(route.path, route.cumulative, d + 3), ah = heading(p, ahead);
-    const nose = screen(ahead, 0, ah), l = screen(p, .57, hd), mid = screen(pointAt(route.path, route.cumulative, d + 1), 0, hd), r = screen(p, -.57, hd);
+    const nose = screen(d + 3, 0), l = screen(d, .57), mid = screen(d + 1, 0), r = screen(d, -.57);
     if (nose && l && mid && r && !crossedQuad([nose, l, mid, r]) && quadArea([nose, l, mid, r]) > 9 && (!lastCentre || Math.hypot(mid[0] - lastCentre[0], mid[1] - lastCentre[1]) > 15)) { arrows.push([nose, l, mid, r].map(p => p.join(',')).join(' ')); lastCentre = mid; }
   }
-  return <svg ref={ref} className="route-ribbon" data-camera-heading={frame.heading.toFixed(2)} data-route-heading={anchor.direction.toFixed(2)} data-route-anchor={start.toFixed(2)} data-lane-offset={anchor.lateral.toFixed(2)} aria-label="Approximate blue route arrows on the road ahead"><g opacity=".68" fill="#2678fa">{mesh.map((p, i) => <polygon key={i} points={p}/>)}</g>{arrows.map((p, i) => <polygon key={i} points={p} fill="#f5faff" fillOpacity=".95"/>)}</svg>;
+  return <svg ref={ref} className="route-ribbon" data-camera-heading={frame.heading.toFixed(2)} data-route-heading={anchor.direction.toFixed(2)} data-route-anchor={start.toFixed(2)} data-lane-offset={route.fixedGuidance ? '0.00' : '2.20'} data-capture-offset={anchor.lateral.toFixed(2)} aria-label="Approximate blue route arrows on the road ahead"><g opacity=".68" fill="#2678fa">{mesh.map((p, i) => <polygon key={i} points={p}/>)}</g>{arrows.map((p, i) => <polygon key={i} points={p} fill="#f5faff" fillOpacity=".95"/>)}</svg>;
 }

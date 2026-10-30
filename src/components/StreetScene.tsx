@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import type { PreparedRoute } from '../types';
-import { angle, metres, pointAt } from '../lib/geometry';
-import { advanceHeading, cameraAnchor, routeFollowHeading, shiftPoint, type Camera } from '../lib/camera';
-import { BufferedPanoramas, type PanoramaFrame } from '../lib/panorama-buffer';
+import { angle, metres } from '../lib/geometry';
+import { advanceHeading, cameraAnchor, guidancePoint, routeFollowHeading, type Camera } from '../lib/camera';
+import { BufferedPanoramas, currentPanoramaRequest, forwardPanorama, type PanoramaFrame } from '../lib/panorama-buffer';
 import { GooglePanoramaSlot } from '../lib/google-panorama-slot';
 import RouteRibbon from './RouteRibbon';
 import { LocateFixed } from 'lucide-react';
@@ -14,18 +14,17 @@ export default function StreetScene({ route, distance, googleReady, following, o
   const container = useRef<HTMLDivElement>(null);
   const currentDistance = useRef(distance); currentDistance.current = distance;
   const moving = useRef(following); moving.current = following;
-  const [camera, setCamera] = useState<Camera | null>(null), [imageDate, setImageDate] = useState(''), [buffering, setBuffering] = useState(false);
+  const [camera, setCamera] = useState<Camera | null>(null), [imageDate, setImageDate] = useState('');
   const [lookingAround, setLookingAround] = useState(false);
   const resume = useRef<() => void>(() => {});
   useEffect(() => {
     if (!googleReady || !container.current) { onAvailability('missing'); onPreparation(null); onBuffering(false); return; }
     let disposed = false, processing = true, waiting = false, lastQuery = -Infinity, retry = false, retryAt = 0, prefetchedId = '', prefetchedAt = -Infinity;
-    let orientationFrame = 0, cameraFrame = 0, resizeFrame = 0, followUntil = 0, previousDistance = currentDistance.current, previousTime = performance.now();
+    let orientationFrame = 0, cameraFrame = 0, resizeFrame = 0, followUntil = 0, previousDistance = currentDistance.current, previousTime = performance.now(), presentedAt = currentDistance.current;
     let buffer: BufferedPanoramas | null = null;
-    let manualLookUntil = 0, manualLookActive = false;
-    const isManual = () => manualLookActive && (!moving.current || performance.now() < manualLookUntil);
-    const looking = (slot: GooglePanoramaSlot) => { if (disposed || buffer?.activeSlot !== slot) return; manualLookUntil = performance.now() + 8000; manualLookActive = true; setLookingAround(true); };
-    resume.current = () => { manualLookUntil = 0; manualLookActive = false; followUntil = performance.now() + 1200; setLookingAround(false); };
+    let manualLookActive = false;
+    const looking = (slot: GooglePanoramaSlot) => { if (disposed || buffer?.activeSlot !== slot) return; manualLookActive = true; setLookingAround(true); };
+    resume.current = () => { manualLookActive = false; followUntil = performance.now() + 2200; setLookingAround(false); };
     const publishCamera = () => {
       if (disposed) return;
       const value = buffer?.activeSlot?.camera(); if (!value) return;
@@ -37,15 +36,16 @@ export default function StreetScene({ route, distance, googleReady, following, o
     catch { created.forEach(slot => slot.dispose()); container.current?.replaceChildren(); onAvailability('missing'); onPreparation(null); onBuffering(false); return; }
     const service = new google.maps.StreetViewService();
     const cache = new Map<number, Promise<PanoramaFrame | null>>();
-    const setWaiting = (value: boolean) => { if (disposed || value === waiting) return; waiting = value; setBuffering(value); onBuffering(value); };
+    const setWaiting = (value: boolean) => { if (disposed || value === waiting) return; waiting = value; onBuffering(value); };
     const lookup = (requested: number): Promise<PanoramaFrame | null> => {
       const sample = Math.max(0, Math.min(route.total, Math.round(requested / 10) * 10));
       const cached = cache.get(sample); if (cached) return cached;
-      const position = pointAt(route.path, route.cumulative, sample), direction = routeFollowHeading(route, sample), target = shiftPoint(position, direction + 90, 2.6);
-      const promise = deadline(service.getPanorama({ location: { lat: target[0], lng: target[1] }, radius: 30, preference: google.maps.StreetViewPreference.NEAREST, sources: [google.maps.StreetViewSource.OUTDOOR] }), 5000).then(({ data }) => {
+      const target = guidancePoint(route, sample);
+      const promise = deadline(service.getPanorama({ location: { lat: target[0], lng: target[1] }, radius: 30, preference: google.maps.StreetViewPreference.NEAREST, sources: [google.maps.StreetViewSource.GOOGLE, google.maps.StreetViewSource.OUTDOOR] }), 5000).then(({ data }) => {
         if (!data.location?.pano || !data.location.latLng) return null;
         const actual: [number, number] = [data.location.latLng.lat(), data.location.latLng.lng()];
         const anchor = cameraAnchor(route, actual, sample);
+        if (!anchor.reliable) return null;
         return { id: data.location.pano, position: actual, distance: anchor.distance, sampleDistance: sample, imageDate: data.imageDate || '' };
       }).catch(error => { if (String(error).includes('ZERO_RESULTS') || (error as { code?: string })?.code === 'ZERO_RESULTS') return null; cache.delete(sample); throw error; });
       cache.set(sample, promise); while (cache.size > 32) cache.delete(cache.keys().next().value!);
@@ -59,10 +59,17 @@ export default function StreetScene({ route, distance, googleReady, following, o
       }
       return null;
     };
-    const show = async (frame: PanoramaFrame) => {
-      const shown = await buffer!.show(frame, () => (isManual() ? buffer!.activeSlot?.camera()?.heading : null) ?? routeFollowHeading(route, currentDistance.current, frame.distance));
+    const show = async (frame: PanoramaFrame, requested: number) => {
+      const previous = buffer!.activeFrame?.id;
+      const shown = await buffer!.show(frame, () => {
+        const look = buffer!.activeSlot?.camera();
+        const seek = Math.abs(requested - presentedAt) > 45;
+        return look && (manualLookActive || !seek) ? look : { heading: routeFollowHeading(route, frame.distance), pitch: -2, zoom: 1 };
+      }, () => !disposed && currentPanoramaRequest(requested, currentDistance.current));
       if (!shown || disposed) return false;
-      followUntil = performance.now() + 1200; setImageDate(buffer!.activeFrame?.imageDate || ''); publishCamera(); onAvailability('ready'); return true;
+      presentedAt = requested;
+      if (previous !== frame.id) followUntil = performance.now() + 2200;
+      setImageDate(buffer!.activeFrame?.imageDate || ''); publishCamera(); onAvailability('ready'); return true;
     };
     const prefetch = async (frame: PanoramaFrame, d: number) => {
       if (prefetchedId === frame.id && Math.abs(d - prefetchedAt) < 18) return;
@@ -72,15 +79,17 @@ export default function StreetScene({ route, distance, googleReady, following, o
     };
     const pump = async () => {
       if (disposed || processing) return;
-      const requested = currentDistance.current;
+      let requested = currentDistance.current;
       if (Math.abs(requested - lastQuery) < 8 && (!retry || performance.now() < retryAt)) return;
       lastQuery = requested; retry = false; processing = true;
       try {
         let frame = await lookup(requested); if (disposed) return;
-        if (Math.abs(currentDistance.current - requested) > 40) { setWaiting(true); frame = await lookup(currentDistance.current); if (disposed) return; }
+        if (!currentPanoramaRequest(requested, currentDistance.current)) { setWaiting(true); requested = currentDistance.current; lastQuery = requested; frame = await lookup(requested); if (disposed) return; }
+        if (!currentPanoramaRequest(requested, currentDistance.current)) return;
         if (!frame) { onAvailability('missing'); setImageDate(''); setWaiting(false); return; }
+        if (!forwardPanorama(frame, buffer!.activeFrame, requested, presentedAt)) return;
         if (frame.id !== buffer!.activeFrame?.id) setWaiting(true);
-        if (!await show(frame)) { retry = true; retryAt = performance.now() + 2500; if (!buffer!.activeFrame || Math.abs(currentDistance.current - buffer!.activeFrame.distance) > 70) onAvailability('missing'); return; }
+        if (!await show(frame, requested)) { retry = true; retryAt = performance.now() + 2500; if (!buffer!.activeFrame || Math.abs(currentDistance.current - buffer!.activeFrame.distance) > 70) onAvailability('missing'); return; }
         setWaiting(false);
         void prefetch(frame, currentDistance.current).catch(() => {});
       } catch { if (!disposed) { retry = true; retryAt = performance.now() + 3000; if (!buffer!.activeFrame || Math.abs(currentDistance.current - buffer!.activeFrame.distance) > 70) onAvailability('missing'); } }
@@ -93,7 +102,7 @@ export default function StreetScene({ route, distance, googleReady, following, o
         const frame = await lookup(requested); if (disposed) return;
         onPreparation(30);
         if (!frame) { onAvailability('missing'); return; }
-        if (!await show(frame) || disposed) { if (!disposed) onAvailability('missing'); return; }
+        if (!await show(frame, requested) || disposed) { if (!disposed) onAvailability('missing'); return; }
         onPreparation(65);
         try {
           const next = await nextFrame(frame, currentDistance.current); if (disposed) return;
@@ -109,13 +118,10 @@ export default function StreetScene({ route, distance, googleReady, following, o
       const d = currentDistance.current;
       if (Math.abs(d - previousDistance) > .15) { if (Math.abs(d - previousDistance) > 45) setWaiting(true); previousDistance = d; followUntil = now + 900; }
       const active = buffer!.activeSlot;
-      const manual = isManual(), manualCamera = manual ? active?.camera() : null;
-      if (!manual && manualLookActive) { manualLookActive = false; setLookingAround(false); }
-      for (const slot of slots) {
-        if (!slot.frame || (slot === active && (manual || (!moving.current && now > followUntil)))) continue;
-        if (manualCamera && slot !== active) { slot.copyLook(manualCamera); continue; }
-        const target = routeFollowHeading(route, d, slot.frame.distance), pov = slot.view.getPov();
-        slot.point(advanceHeading(Number.isFinite(pov?.heading) ? pov.heading : target, target, elapsed));
+      const activeFrame = buffer!.activeFrame, pov = active?.camera();
+      if (active && activeFrame && pov && !manualLookActive && (moving.current || now < followUntil)) {
+        const target = routeFollowHeading(route, activeFrame.distance);
+        active.point(advanceHeading(Number.isFinite(pov.heading) ? pov.heading : target, target, elapsed));
       }
       publishCamera(); orientationFrame = requestAnimationFrame(orient);
     };
@@ -129,7 +135,6 @@ export default function StreetScene({ route, distance, googleReady, following, o
     <div ref={container} className="google-panorama ready"/>
     {camera && <RouteRibbon route={route} distance={distance} camera={camera}/>}
     {lookingAround && <button className="face-route" onClick={() => resume.current()}><LocateFixed size={15}/> Face route</button>}
-    {buffering && camera && <div className="street-buffering">Preparing next view…</div>}
     {googleReady && dateLabel && <div className="photo-date">Photo: {dateLabel}</div>}
   </div>;
 }

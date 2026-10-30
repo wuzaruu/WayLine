@@ -1,11 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { BufferedPanoramas, type PanoramaFrame, type PanoramaSlot } from './panorama-buffer';
+import { BufferedPanoramas, currentPanoramaRequest, forwardPanorama, type PanoramaFrame, type PanoramaLook, type PanoramaSlot } from './panorama-buffer';
 class Slot implements PanoramaSlot {
   loads: string[] = [];
   visible = false;
   activations = 0;
   heading = 0;
+  look: PanoramaLook = { heading: 0, pitch: -2, zoom: 1 };
   pending: { resolve: () => void; reject: (error: Error) => void } | null = null;
   prepare(frame: PanoramaFrame) {
     this.pending?.reject(new Error('Superseded'));
@@ -15,6 +16,7 @@ class Slot implements PanoramaSlot {
   present(active: boolean) { this.visible = active; if (active) this.activations++; }
   camera() { return null; }
   point(heading: number) { this.heading = heading; }
+  setLook(look: PanoramaLook) { this.look = look; this.point(look.heading); }
   dispose() { this.pending?.reject(new Error('Disposed')); }
 }
 const frame = (id: string): PanoramaFrame => ({ id, position: [53.55, -113.5], distance: 0, sampleDistance: 0, imageDate: '' });
@@ -60,4 +62,27 @@ test('A prepared photo uses the latest look direction at the moment it becomes v
   const { slots, buffer } = await setup(); let heading = 15;
   const next = buffer.show(frame('B'), () => heading); heading = 125;
   slots[1].pending!.resolve(); assert.equal(await next, true); assert.equal(slots[1].heading, 125);
+});
+test('A photo swap preserves the latest manual heading, pitch and zoom', async () => {
+  const { slots, buffer } = await setup();
+  let look: PanoramaLook = { heading: 15, pitch: -8, zoom: 2 };
+  const next = buffer.show(frame('B'), () => look);
+  look = { heading: 125, pitch: 7, zoom: 1.5 };
+  slots[1].pending!.resolve(); assert.equal(await next, true);
+  assert.deepEqual(slots[1].look, look);
+});
+test('A view that finished loading after a seek cannot replace the current photo', async () => {
+  const { slots, buffer } = await setup(); let current = true;
+  const next = buffer.show(frame('B'), 90, () => current);
+  current = false; slots[1].pending!.resolve();
+  assert.equal(await next, false); assert.equal(buffer.activeFrame?.id, 'A'); assert.equal(slots[1].activations, 0);
+});
+test('Forward movement rejects backward panorama jumps while intentional reverse seeks remain available', () => {
+  const active = { ...frame('A'), distance: 100 }, behind = { ...frame('B'), distance: 80 }, ahead = { ...frame('C'), distance: 120 };
+  assert.equal(forwardPanorama(behind, active, 110, 100), false);
+  assert.equal(forwardPanorama(ahead, active, 110, 100), true);
+  assert.equal(forwardPanorama(behind, active, 75, 100), true);
+  assert.equal(currentPanoramaRequest(100, 145), false);
+  assert.equal(currentPanoramaRequest(100, 80), false);
+  assert.equal(currentPanoramaRequest(100, 115), true);
 });
