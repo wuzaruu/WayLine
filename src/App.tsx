@@ -4,6 +4,7 @@ import RouteMap from './components/RouteMap';
 import StreetScene from './components/StreetScene';
 import { distanceLabel, heading, pointAt, prepare, project } from './lib/geometry';
 import { loadGoogle } from './lib/google';
+import { applyLaneCorrection, type LaneCorrectionCatalog } from './lib/lane-corrections';
 import type { CSSProperties } from 'react';
 import RouteSheet from './components/RouteSheet';
 import PreviewControls from './components/PreviewControls';
@@ -16,6 +17,7 @@ const headsignText = (v: string) => v.replace(/^\d+[AB]?\s+/i, '');
 
 export default function App() {
   const [index, setIndex] = useState<RouteIndex | null>(null);
+  const [laneCatalog, setLaneCatalog] = useState<LaneCorrectionCatalog | null>(null);
   const [config, setConfig] = useState<AppConfig>({ googleMapsBrowserKey: '', serverDirectionsEnabled: false });
   const [routeId, setRouteId] = useState('004'), [variantId, setVariantId] = useState('0');
   const [variants, setVariants] = useState<Variant[]>([]), [loading, setLoading] = useState(true), [loadError, setLoadError] = useState('');
@@ -38,7 +40,9 @@ export default function App() {
   const fullView = nativeFullscreen || immersive;
   const selected = index?.routes.find(r => r.id === routeId);
   const raw = variants.find(v => v.id === variantId);
-  const route = useMemo(() => raw ? prepare(raw) : null, [raw]);
+  const correction = laneCatalog?.schemaVersion === 1 && laneCatalog.feedVersion === index?.version ? laneCatalog.routes?.[routeId]?.variants?.[variantId] : undefined;
+  const corrected = useMemo(() => raw ? applyLaneCorrection(raw, correction) : undefined, [raw, correction]);
+  const route = useMemo(() => corrected ? prepare(corrected) : null, [corrected]);
   routeRef.current = route; progressRef.current = distance;
   const instructions = googleInstructions || route?.instructions || [];
   const nextInstruction = instructions.find(s => s.distance > distance + 8) || instructions.at(-1);
@@ -58,6 +62,7 @@ export default function App() {
     const controller = new AbortController();
     fetch('/data/routes.json', { signal: controller.signal }).then(r => { if (!r.ok) throw new Error(); return r.json(); }).then(setIndex).catch(e => { if (e.name !== 'AbortError') { setLoadError('The Edmonton route catalogue could not be loaded. Refresh to try again.'); setLoading(false); } });
     fetch('/api/config', { signal: controller.signal }).then(r => r.json()).then(setConfig).catch(() => {});
+    fetch('/data/lane-corrections.json', { signal: controller.signal }).then(r => { if (!r.ok) throw new Error(); return r.json(); }).then(setLaneCatalog).catch(() => {});
     return () => controller.abort();
   }, []);
   useEffect(() => {
@@ -133,7 +138,7 @@ export default function App() {
     return () => { window.removeEventListener('resize', resize); viewport?.removeEventListener('resize', resize); document.documentElement.style.removeProperty('--app-height'); };
   }, []);
   function closeSearch() { setSearching(false); searchRef.current?.querySelector('input')?.blur(); }
-  function openPreview(at = 0, autoplay = true) { setScenePreparation(googleReady && view === 'first' ? 0 : null); closeSearch(); stopGps(); setStarted(false); setPreviewOpen(true); setDistance(at); setRate(4); setPlaying(autoplay); }
+  function openPreview(at = 0, autoplay = true) { if (!inJourney) setScenePreparation(googleReady && view === 'first' ? 0 : null); closeSearch(); stopGps(); setStarted(false); setPreviewOpen(true); setDistance(at); setRate(4); setPlaying(autoplay); }
   function leaveJourney() { if (document.fullscreenElement) void document.exitFullscreen(); setImmersive(false); setPreviewOpen(false); setStarted(false); setRecenter(v => v + 1); reset(); }
   const previewControls = <PreviewControls buffering={sceneWaiting || (scenePreparation !== null && scenePreparation < 100)} playing={playing} distance={distance} total={route?.total || 0} duration={route?.durationSeconds || 0} rate={rate} fullView={fullView} onPlaying={() => { if (completed) setDistance(0); setPlaying(v => !v); }} onSeek={seek} onRate={setRate} onRestart={() => { setDistance(0); setPlaying(false); }} onFullscreen={toggleFullscreen} onClose={leaveJourney}/>;
 

@@ -44,6 +44,14 @@ Street View advances between captured panoramas. The road ribbon assumes a flat 
 
 The startup percentage reports preparation of the starting and next viewpoint. It is not an image-download percentage for the whole route. Google’s documented JavaScript viewer does not expose full tile-render completion or whole-route image preloading. The buffer is limited to the current and next viewer; it does not download or store a route-wide imagery collection. Photo-to-photo position jumps, slow-network stalls and imagery gaps can still occur. See the [Street View viewer reference](https://developers.google.com/maps/documentation/javascript/reference/street-view).
 
+## Lane correction cache
+
+`public/data/lane-corrections.json` deploys with the site and needs no Railway volume. It contains review slots for all 182 routes and 390 representative patterns. All slots are currently pending; no manually verified lane paths have been supplied or completed. ETS route shapes do not specify the correct lane or turn-lane transition.
+
+A reviewed pattern can provide an ordered `path` of `[latitude, longitude]` points following the lane centre, including gradual lane changes and the exit from each turn. Record the evidence in `source`, the review date in `reviewedAt`, and set `reviewStatus` to `verified` only after checking the complete pattern. Verified paths replace the route geometry used by both maps and the Street View ribbon. Automatic camera-lane offsets are disabled for these paths so looking around cannot move the reviewed line.
+
+The app ignores pending corrections, invalid coordinates, mismatched route-shape signatures and corrections from a different feed version. Refresh the review slots after refreshing ETS data with `npm run prepare:lanes`. Matching shapes retain their corrections; changed shapes return to pending. This JSON is route geometry only; Google imagery remains managed by its viewer.
+
 ## Route data
 
 The included [City of Edmonton GTFS feed](https://gtfs.edmonton.ca/TMGTFSRealTimeWebService/GTFS/gtfs.zip) covers October 13–November 28, 2026. These are static routes, not live vehicle locations or departure predictions. Travel times come from representative scheduled trips. Distinct headsign/direction combinations use their most common shape; not every short-turn variation is included.

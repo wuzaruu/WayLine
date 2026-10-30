@@ -12,7 +12,7 @@ export default function RouteRibbon({ route, distance, camera }: { route: Prepar
   const frame: Camera = camera || { position: pos, heading: anchor.direction, pitch: -2, zoom: 1 };
   const start = anchor.distance;
   function screen(p: Point, lateral: number, direction: number): [number, number] | null {
-    return groundProjection(shiftPoint(p, direction + 90, anchor.lateral + lateral), frame, w, h);
+    return groundProjection(shiftPoint(p, direction + 90, (route.fixedGuidance ? 0 : anchor.lateral) + lateral), frame, w, h);
   }
   if (!anchor.reliable) return null;
   const sections: { left: [number, number]; right: [number, number] }[] = [];
