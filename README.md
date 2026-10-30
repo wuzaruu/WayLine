@@ -24,7 +24,9 @@ Optional Google road instructions use a separate `MAPS_SERVER_API_KEY`, with Rou
 
 - Route-number search, direction/pattern selection, stops and representative scheduled journey times.
 - 182 ETS bus routes and 390 representative route patterns.
-- First-person Google Street View with a camera-anchored blue route ribbon.
+- First-person Google Street View with an always-on, camera-anchored blue route ribbon.
+- Continuous camera-heading updates through turns, independent of panorama lookups.
+- Startup preparation progress and two reusable Google viewers, keeping the current picture in place while the next viewpoint prepares.
 - Satellite follow camera, automatically used during missing Street View coverage.
 - Clickable stops with numbers, platforms and wheelchair boarding information when provided.
 - Visual stop notices and optional spoken stop/turn announcements.
@@ -37,6 +39,8 @@ Optional Google road instructions use a separate `MAPS_SERVER_API_KEY`, with Rou
 - Independent playback state in each browser tab.
 
 Street View advances between captured panoramas. The road ribbon assumes a flat ground plane and uses route geometry plus the actual panorama camera position. It cannot guarantee lane-level accuracy or invent required turn-lane changes. Third-person mode is a satellite map following the bus marker.
+
+The startup percentage reports preparation of the starting and next viewpoint. It is not an image-download percentage for the whole route. Google’s documented JavaScript viewer does not expose full tile-render completion or whole-route image preloading. The buffer is limited to the current and next viewer; it does not download or store a route-wide imagery collection. Photo-to-photo position jumps, slow-network stalls and imagery gaps can still occur. See the [Street View viewer reference](https://developers.google.com/maps/documentation/javascript/reference/street-view).
 
 ## Route data
 

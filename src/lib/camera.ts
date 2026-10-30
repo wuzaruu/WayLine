@@ -1,6 +1,15 @@
-import { heading, pointAt, project } from './geometry';
+import { angle, heading, pointAt, project } from './geometry';
 import type { Point, PreparedRoute } from '../types';
 export type Camera = { position: Point; heading: number; pitch: number; zoom: number };
+export function routeFollowHeading(route: PreparedRoute, distance: number, panoramaDistance = distance) {
+  const d = Math.max(0, Math.min(route.total, Math.max(distance, Math.min(panoramaDistance, distance + 45))));
+  return heading(pointAt(route.path, route.cumulative, Math.max(0, d - 3)), pointAt(route.path, route.cumulative, Math.min(route.total, d + 7)));
+}
+export function advanceHeading(current: number, target: number, seconds: number) {
+  const delta = angle(current, target), limit = Math.max(0, Math.min(seconds, .1)) * 180;
+  const step = Math.max(-limit, Math.min(limit, delta * (1 - Math.exp(-10 * Math.max(0, seconds)))));
+  return (current + step + 360) % 360;
+}
 export function shiftPoint(point: Point, bearing: number, metres: number): Point {
   const r = bearing * Math.PI / 180;
   return [point[0] + Math.cos(r) * metres / 111320, point[1] + Math.sin(r) * metres / (111320 * Math.cos(point[0] * Math.PI / 180))];

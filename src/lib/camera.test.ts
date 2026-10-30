@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { cameraAnchor, groundProjection, shiftPoint } from './camera';
+import { advanceHeading, cameraAnchor, groundProjection, routeFollowHeading, shiftPoint } from './camera';
+import { angle } from './geometry';
 import { prepare } from './geometry';
 import type { Point } from '../types';
 const origin: Point = [53.55, -113.5];
@@ -34,4 +35,17 @@ test('The camera heading follows the actual panorama after an intersection', () 
 test('A panorama far from the route is rejected rather than drawing across another road', () => {
   const route = prepare({ id: 'far', direction: '0', headsign: '', stops: [], path: [origin, shiftPoint(origin, 0, 100)], durationSeconds: 60 });
   assert.equal(cameraAnchor(route, shiftPoint(origin, 90, 40), 0).reliable, false);
+});
+test('Heading follows a turn even when the photo has not changed and movement is under 18 metres', () => {
+  const corner = shiftPoint(origin, 0, 10);
+  const route = prepare({ id: 'small-turn', direction: '0', headsign: '', stops: [], path: [origin, corner, shiftPoint(corner, 90, 40)], durationSeconds: 30 });
+  assert.ok(Math.abs(routeFollowHeading(route, 15, 0) - 90) < 1);
+  assert.ok(Math.abs(routeFollowHeading(route, 7, 22) - 90) < 1);
+});
+test('Heading interpolation takes the short path across north', () => {
+  const next = advanceHeading(359, 1, .1);
+  assert.ok(Math.abs(angle(359, next)) < 2); assert.ok(Math.abs(angle(next, 1)) < 1);
+});
+test('Heading interpolation limits rotation speed', () => {
+  assert.ok(Math.abs(angle(0, advanceHeading(0, 170, .016))) <= 180 * .016 + .001);
 });
