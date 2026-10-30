@@ -8,6 +8,8 @@ export default function RouteMap({ route, position, heading, googleReady, follow
   const leaf = useRef<L.Map | null>(null); const gmap = useRef<google.maps.Map | null>(null);
   const layers = useRef<L.LayerGroup | null>(null); const leafBus = useRef<L.Marker | null>(null);
   const googleLayers = useRef<(google.maps.Polyline | google.maps.Marker)[]>([]); const gBus = useRef<google.maps.Marker | null>(null);
+  const currentRoute = useRef(route), following = useRef(follow);
+  currentRoute.current = route; following.current = follow;
   useEffect(() => {
     if (!container.current) return;
     if (googleReady) {
@@ -18,9 +20,18 @@ export default function RouteMap({ route, position, heading, googleReady, follow
       L.control.zoom({ position: 'bottomright' }).addTo(map);
       leaf.current = map; layers.current = L.layerGroup().addTo(map);
     }
-    const resize = new ResizeObserver(() => { leaf.current?.invalidateSize({ animate: false, pan: false }); if (gmap.current) google.maps.event.trigger(gmap.current, 'resize'); });
+    let resizeFrame = 0;
+    const resize = new ResizeObserver(() => { cancelAnimationFrame(resizeFrame); resizeFrame = requestAnimationFrame(() => {
+      leaf.current?.invalidateSize({ animate: false, pan: false });
+      if (gmap.current) google.maps.event.trigger(gmap.current, 'resize');
+      const r = currentRoute.current;
+      if (!r || following.current || !container.current) return;
+      const pad = Math.min(45, container.current.clientHeight * .12, container.current.clientWidth * .1);
+      leaf.current?.fitBounds(L.latLngBounds(r.path), { padding: [pad, pad], animate: false });
+      if (gmap.current) { const bounds = new google.maps.LatLngBounds(); r.path.forEach(p => bounds.extend({ lat: p[0], lng: p[1] })); gmap.current.fitBounds(bounds, pad); }
+    }); });
     resize.observe(container.current);
-    return () => { resize.disconnect(); leaf.current?.remove(); leaf.current = null; gmap.current = null; container.current?.replaceChildren(); googleLayers.current = []; gBus.current = null; };
+    return () => { cancelAnimationFrame(resizeFrame); resize.disconnect(); leaf.current?.remove(); leaf.current = null; gmap.current = null; container.current?.replaceChildren(); googleLayers.current = []; gBus.current = null; };
   }, [googleReady]);
   useEffect(() => {
     if (!route) return;

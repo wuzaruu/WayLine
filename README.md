@@ -31,7 +31,9 @@ Optional Google road instructions use a separate `MAPS_SERVER_API_KEY`, with Rou
 - Panorama capture month/year when Google supplies it.
 - Native navigation fullscreen, with an immersive viewport fallback for browsers without the Fullscreen API.
 - Phone layout, top-right satellite preview and GPS following by default when Start route is pressed.
-- A separate video-style route preview player directly above Start route.
+- A Route preview button above Start route that opens a dedicated player without GPS.
+- A draggable mobile route panel with collapsed, middle and expanded positions.
+- Search results contained in the panel, including when the phone keyboard reduces the viewport.
 - Independent playback state in each browser tab.
 
 Street View advances between captured panoramas. The road ribbon assumes a flat ground plane and uses route geometry plus the actual panorama camera position. It cannot guarantee lane-level accuracy or invent required turn-lane changes. Third-person mode is a satellite map following the bus marker.
