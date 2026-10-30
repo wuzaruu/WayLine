@@ -5,7 +5,7 @@ import { crossedQuad, quadArea } from '../lib/ribbon';
 import type { Point, PreparedRoute } from '../types';
 export default function RouteRibbon({ route, distance, camera }: { route: PreparedRoute; distance: number; camera: Camera | null }) {
   const ref = useRef<SVGSVGElement>(null); const [size, setSize] = useState([1000, 600]);
-  useEffect(() => { if (!ref.current) return; const observer = new ResizeObserver(entries => { const b = entries[0].contentRect; setSize([b.width, b.height]); }); observer.observe(ref.current); return () => observer.disconnect(); }, []);
+  useEffect(() => { if (!ref.current) return; const observer = new ResizeObserver(entries => { const b = entries[0].contentRect; if (b.width > 0 && b.height > 0) setSize([b.width, b.height]); }); observer.observe(ref.current); return () => observer.disconnect(); }, []);
   const pos = camera?.position || pointAt(route.path, route.cumulative, distance);
   const [w, h] = size;
   const anchor = cameraAnchor(route, pos, distance);
@@ -14,9 +14,8 @@ export default function RouteRibbon({ route, distance, camera }: { route: Prepar
   function screen(p: Point, lateral: number, direction: number): [number, number] | null {
     return groundProjection(shiftPoint(p, direction + 90, (route.fixedGuidance ? 0 : anchor.lateral) + lateral), frame, w, h);
   }
-  if (!anchor.reliable) return null;
   const sections: { left: [number, number]; right: [number, number] }[] = [];
-  for (let d = start + 5; d < Math.min(route.total, start + 95); d += 1.5) {
+  for (let d = start + 5; anchor.reliable && d < Math.min(route.total, start + 95); d += 1.5) {
     const p = pointAt(route.path, route.cumulative, d), hd = heading(pointAt(route.path, route.cumulative, d - 2), pointAt(route.path, route.cumulative, d + 2));
     const left = screen(p, -.72, hd), right = screen(p, .72, hd);
     if (left && right) sections.push({ left, right }); else if (sections.length) break;
@@ -28,7 +27,7 @@ export default function RouteRibbon({ route, distance, camera }: { route: Prepar
   }
   const arrows = [];
   let lastCentre: Point | null = null;
-  for (let d = start + 12; d < Math.min(route.total, start + 90); d += 15) {
+  for (let d = start + 12; anchor.reliable && d < Math.min(route.total, start + 90); d += 15) {
     const p = pointAt(route.path, route.cumulative, d), hd = heading(pointAt(route.path, route.cumulative, d - 2), pointAt(route.path, route.cumulative, d + 2));
     const ahead = pointAt(route.path, route.cumulative, d + 3), ah = heading(p, ahead);
     const nose = screen(ahead, 0, ah), l = screen(p, .57, hd), mid = screen(pointAt(route.path, route.cumulative, d + 1), 0, hd), r = screen(p, -.57, hd);
