@@ -1,0 +1,9 @@
+export type Point = [number, number];
+export type Stop = { id: string; code: string; name: string; lat: number; lng: number; elapsed: number; distance?: number; platform?: string; description?: string; wheelchairBoarding?: string };
+export type VariantInfo = { id: string; direction: string; headsign: string; stops: number; from: string; to: string; durationSeconds: number };
+export type BusRoute = { id: string; number: string; name: string; variants: VariantInfo[] };
+export type RouteIndex = { routes: BusRoute[]; source: string; url: string; terms: string; downloadedAt: string; feedStart: string; feedEnd: string; version: string };
+export type Variant = { id: string; direction: string; headsign: string; stops: Stop[]; path: Point[]; durationSeconds: number };
+export type Instruction = { distance: number; text: string; maneuver: 'left' | 'right' | 'straight' | 'arrive'; source: 'shape' | 'google' };
+export type PreparedRoute = Variant & { cumulative: number[]; total: number; instructions: Instruction[] };
+export type AppConfig = { googleMapsBrowserKey: string; serverDirectionsEnabled: boolean };
